@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SlabOS Dashboard</title>
+    <style>
+        :root {
+            --neon-cyan: #00f3ff;
+            --neon-pink: #ff00ea;
+            --dark-bg: #050505;
+            --panel-bg: rgba(0, 243, 255, 0.03);
+            --glass-border: rgba(0, 243, 255, 0.2);
+        }
+
+        body {
+            background-color: var(--dark-bg);
+            color: #e0e0e0;
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 20px;
+            background-image: 
+                radial-gradient(circle at 15% 50%, rgba(0, 243, 255, 0.04) 0%, transparent 50%),
+                radial-gradient(circle at 85% 30%, rgba(255, 0, 234, 0.04) 0%, transparent 50%);
+        }
+
+        h1, h2, h3 {
+            color: var(--neon-cyan);
+            text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 0;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+
+        @media (min-width: 768px) {
+            .container { grid-template-columns: 1fr 2fr; }
+        }
+
+        .glass-panel {
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            transition: border-color 0.3s ease;
+        }
+
+        .glass-panel.drag-over {
+            border-color: #00ffaa !important;
+            background: rgba(0, 255, 170, 0.05) !important;
+        }
+
+        .vitals-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .vital-card {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .vital-value {
+            font-size: 1.5rem;
+            color: var(--neon-cyan);
+            margin-top: 10px;
+            font-weight: bold;
+            text-shadow: 0 0 5px var(--neon-cyan);
+        }
+
+        .chat-box {
+            height: 400px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .message {
+            padding: 10px 15px;
+            border-radius: 8px;
+            max-width: 80%;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+
+        .message.user {
+            background: rgba(0, 243, 255, 0.1);
+            border-left: 3px solid var(--neon-cyan);
+            align-self: flex-end;
+            color: #fff;
+        }
+
+        .message.ai {
+            background: rgba(255, 0, 234, 0.1);
+            border-right: 3px solid var(--neon-pink);
+            align-self: flex-start;
+            color: #fff;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--glass-border);
+            color: var(--neon-cyan);
+            padding: 12px;
+            border-radius: 6px;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+
+        input[type="text"]:focus { border-color: var(--neon-pink); }
+
+        button {
+            background: transparent;
+            color: var(--neon-cyan);
+            border: 1px solid var(--neon-cyan);
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+            text-transform: uppercase;
+            transition: all 0.3s ease;
+        }
+
+        button:hover:not(:disabled) {
+            background: var(--neon-cyan);
+            color: #000;
+            box-shadow: 0 0 15px var(--neon-cyan);
+        }
+
+        button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+            border-color: #555;
+            color: #555;
+        }
+
+        /* QR Code Container Styling */
+        .qr-box {
+            width: 180px;
+            height: 180px;
+            background: #ffffff;
+            padding: 10px;
+            border-radius: 8px;
+            border: 2px solid var(--neon-cyan);
+            box-sizing: border-box;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .qr-box svg {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
+        }
+
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+        ::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--neon-cyan); }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <!-- Sidebar: Hardware Telemetry -->
+        <div class="glass-panel">
+            <h2>System Vitals</h2>
+            <div class="vitals-grid">
+                <div class="vital-card"><div>CPU</div><div class="vital-value" id="cpu-val">--%</div></div>
+                <div class="vital-card"><div>RAM</div><div class="vital-value" id="ram-val">--%</div></div>
+                <div class="vital-card"><div>TEMP</div><div class="vital-value" id="temp-val">--°C</div></div>
+                <div class="vital-card"><div>DISK FREE</div><div class="vital-value" id="disk-val">-- GB</div></div>
+            </div>
+            
+            <h3 style="margin-top: 30px; font-size: 1rem;">Configuration</h3>
+            <input type="text" id="model-input" value="{{ active_model }}" readonly style="width: 90%; margin-bottom: 10px; font-size: 0.8rem; background: rgba(0,0,0,0.2); cursor: not-allowed; opacity: 0.7;">
+            <div id="vision-badge" style="font-size: 0.8rem; color: #888;">Checking model capabilities...</div>
+        </div>
+
+        {% if enable_ai %}
+        <!-- Main Panel: AI Link -->
+        <div class="glass-panel">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Secure AI Link</h2>
+                <span id="chat-mode-indicator" style="font-size: 0.75rem; color: #888;">[Checking Capabilities]</span>
+            </div>
+
+            <div class="chat-box" id="chat-box">
+                <div class="message ai">Connection established. Awaiting input.</div>
+            </div>
+            
+            <!-- Image Attachment Preview Badge -->
+            <div id="image-preview-badge" style="display: none; align-items: center; gap: 10px; margin-bottom: 10px; background: rgba(0,243,255,0.1); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--neon-cyan);">
+                <span style="font-size: 0.8rem; color: var(--neon-cyan);">📷 Image Attached</span>
+                <button onclick="clearAttachedImage()" style="padding: 2px 6px; font-size: 0.6rem; border-color: var(--neon-pink); color: var(--neon-pink);">Remove</button>
+            </div>
+
+            <div class="input-group">
+                <button id="image-btn" onclick="triggerImageSelect()" style="padding: 12px 14px; border-color: #ffb800; color: #ffb800;" title="Attach Image">🖼️</button>
+                <input type="file" id="image-input" accept="image/*" style="display: none;" onchange="handleImageAttach(event)">
+                
+                <input type="text" id="chat-input" placeholder="Enter prompt..." onkeypress="handleEnter(event)">
+                <button onclick="sendChat()">Transmit</button>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if enable_media %}
+        <!-- Bottom Panel: Secure Media Vault -->
+        <div class="glass-panel" id="vault-panel" style="grid-column: 1 / -1; margin-top: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Secure Media Vault</h2>
+                <span style="font-size: 0.75rem; color: #888;">💡 Drag & Drop files anywhere into box</span>
+            </div>
+            
+            <div id="media-list" style="display: flex; flex-direction: column; gap: 10px; max-height: 250px; overflow-y: auto; padding-right: 10px;">
+                <div style="color: #888;">Scanning vault...</div>
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap;">
+                <button onclick="fetchMediaList(currentVaultPath)" style="font-size: 0.8rem;">Refresh</button>
+                <button onclick="createFolderPrompt()" style="font-size: 0.8rem; border-color: #00f3ff; color: #00f3ff;">📁 New Folder</button>
+                <button onclick="document.getElementById('file-upload').click()" style="font-size: 0.8rem; border-color: #00ffaa; color: #00ffaa;">📤 Upload</button>
+                <input type="file" id="file-upload" style="display: none;" onchange="uploadFile(event.target.files[0])">
+            </div>
+        </div>
+        {% endif %}
+
+        {% if is_admin %}
+        <!-- Bottom Panel: Admin Command Center -->
+        <div class="glass-panel" style="grid-column: 1 / -1; margin-top: 10px; border-color: var(--neon-pink);">
+            <h2 style="color: var(--neon-pink);">Admin Command Center</h2>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <button onclick="shutdownServer()" style="border-color: var(--neon-pink); color: var(--neon-pink);">Shutdown Node</button>
+                <button onclick="generateGuest()" style="border-color: #ffb800; color: #ffb800;">Manage Guest Access</button>
+            </div>
+            <div id="admin-console" style="margin-top: 15px; color: #888; font-family: 'Courier New', monospace; font-size: 0.9rem;">
+                System nominal. Standing by.
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const pin = urlParams.get('pin') || "";
+        let attachedBase64Image = "";
+        let isVisionSupported = false;
+
+        // Telemetry Polling
+        async function fetchVitals() {
+            if (!pin) return; 
+            try {
+                const response = await fetch(`/api/vitals?pin=${pin}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('cpu-val').innerText = data.cpu_pct + '%';
+                    document.getElementById('ram-val').innerText = data.ram_pct + '%';
+                    document.getElementById('temp-val').innerText = data.cpu_temp > 0 ? data.cpu_temp + '°C' : 'N/A';
+                    document.getElementById('disk-val').innerText = data.disk_free_gb + ' GB';
+                }
+            } catch (error) {}
+        }
+        setInterval(fetchVitals, 2000);
+        fetchVitals();
+
+        // Check Vision Capabilities of Active Model
+        async function checkVisionCapability() {
+            if (!pin) return;
+            try {
+                const response = await fetch(`/api/ai/check-vision?pin=${pin}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    isVisionSupported = data.is_vision;
+                    
+                    const visionBadge = document.getElementById('vision-badge');
+                    const modeIndicator = document.getElementById('chat-mode-indicator');
+                    const imageBtn = document.getElementById('image-btn');
+
+                    if (isVisionSupported) {
+                        if (visionBadge) visionBadge.innerHTML = '<span style="color: #00ffaa;">✔ Vision Multimodal Active</span>';
+                        if (modeIndicator) {
+                            modeIndicator.innerText = "[Multimodal Vision Enabled]";
+                            modeIndicator.style.color = "#00ffaa";
+                        }
+                        if (imageBtn) imageBtn.disabled = false;
+                    } else {
+                        if (visionBadge) visionBadge.innerHTML = '<span style="color: #888;">Text-Only Model Active</span>';
+                        if (modeIndicator) {
+                            modeIndicator.innerText = "[Text-Only Model Active]";
+                            modeIndicator.style.color = "#888";
+                        }
+                        if (imageBtn) {
+                            imageBtn.disabled = true;
+                            imageBtn.title = "Active model does not support images. Load 'llava' or 'llama3.2-vision'.";
+                        }
+                    }
+                }
+            } catch (error) {}
+        }
+        checkVisionCapability();
+
+        function triggerImageSelect() {
+            if (!isVisionSupported) {
+                alert("Active model does not support image processing. Please switch to a vision model like 'llava'.");
+                return;
+            }
+            document.getElementById('image-input').click();
+        }
+
+        function handleImageAttach(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                attachedBase64Image = e.target.result.split(',')[1];
+                document.getElementById('image-preview-badge').style.display = 'flex';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearAttachedImage() {
+            attachedBase64Image = "";
+            document.getElementById('image-input').value = "";
+            document.getElementById('image-preview-badge').style.display = 'none';
+        }
+
+        function handleEnter(event) {
+            if (event.key === 'Enter') sendChat();
+        }
+
+        async function sendChat() {
+            const inputField = document.getElementById('chat-input');
+            const chatBox = document.getElementById('chat-box');
+            if (!inputField || !chatBox) return; 
+            
+            const modelName = document.getElementById('model-input').value.trim();
+            const prompt = inputField.value.trim();
+            if (!prompt) return;
+            
+            const userMsg = document.createElement('div');
+            userMsg.className = 'message user';
+            userMsg.innerText = prompt + (attachedBase64Image ? " [📷 Image Attached]" : "");
+            chatBox.appendChild(userMsg);
+            
+            inputField.value = '';
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            const aiMsg = document.createElement('div');
+            aiMsg.className = 'message ai';
+            chatBox.appendChild(aiMsg);
+
+            const payload = { 
+                prompt: prompt, 
+                model: modelName,
+                images: attachedBase64Image ? [attachedBase64Image] : []
+            };
+
+            clearAttachedImage();
+
+            try {
+                const response = await fetch(`/api/chat?pin=${pin}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    aiMsg.innerText = "[!] Transmission Error. Verify PIN and local Ollama model.";
+                    return;
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder("utf-8");
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value, { stream: true });
+                    const lines = chunk.split('\n\n');
+
+                    for (let line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.substring(6));
+                                if (data.text) {
+                                    aiMsg.innerHTML += data.text.replace(/\n/g, '<br>');
+                                    chatBox.scrollTop = chatBox.scrollHeight;
+                                }
+                                if (data.error) {
+                                    aiMsg.innerHTML += `<br>[!] Backend Error: ${data.error}`;
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                }
+            } catch (error) {
+                aiMsg.innerText = "[!] Connection lost to host node.";
+            }
+        }
+
+        // Media Vault
+        let currentVaultPath = "";
+
+        async function fetchMediaList(targetPath = "") {
+            if (!pin) return;
+            const mediaListDiv = document.getElementById('media-list');
+            if (!mediaListDiv) return; 
+            
+            mediaListDiv.innerHTML = '<div style="color: #888;">Scanning vault...</div>';
+            
+            try {
+                const response = await fetch(`/api/media/list?pin=${pin}&subpath=${encodeURIComponent(targetPath)}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    mediaListDiv.innerHTML = ''; 
+                    currentVaultPath = data.current_path;
+
+                    if (currentVaultPath !== "") {
+                        let pathParts = currentVaultPath.split('/');
+                        pathParts.pop(); 
+                        let parentPath = pathParts.join('/');
+                        
+                        const backBtn = document.createElement('div');
+                        backBtn.style = "display: flex; align-items: center; background: rgba(0, 243, 255, 0.1); padding: 10px; border-radius: 6px; border: 1px solid var(--neon-cyan); cursor: pointer; margin-bottom: 10px; transition: all 0.3s ease;";
+                        backBtn.innerHTML = "<span style='margin-right: 10px;'>🔙</span><span style='color: var(--neon-cyan); font-weight: bold;'>.. / Go Back</span>";
+                        backBtn.onclick = () => fetchMediaList(parentPath);
+                        mediaListDiv.appendChild(backBtn);
+                    }
+
+                    const hasFolders = data.folders && data.folders.length > 0;
+                    const hasFiles = data.files && data.files.length > 0;
+
+                    if (hasFolders || hasFiles) {
+                        data.folders.forEach(folder => {
+                            const folderItem = document.createElement('div');
+                            folderItem.style = "display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.6); padding: 10px; border-radius: 6px; border: 1px solid var(--glass-border); margin-bottom: 5px;";
+                            
+                            const newPath = currentVaultPath ? `${currentVaultPath}/${folder}` : folder;
+                            let isUSB = folder.startsWith("USB_Drive_") || folder.startsWith("USB_");
+                            let folderIcon = isUSB ? "💾" : "📁";
+                            let folderColor = isUSB ? "#ffb800" : "#fff"; 
+                            
+                            const label = document.createElement('div');
+                            label.style = "cursor: pointer; display: flex; align-items: center;";
+                            label.onclick = () => fetchMediaList(newPath);
+                            label.innerHTML = `<span style='margin-right: 10px; font-size: 1.2rem;'>${folderIcon}</span><span style='color: ${folderColor}; font-weight: ${isUSB ? 'bold' : 'normal'};'>${folder}</span>`;
+                            
+                            const actions = document.createElement('div');
+                            actions.style = "display: flex; gap: 5px;";
+                            
+                            if (!isUSB || currentVaultPath !== "") {
+                                actions.innerHTML = `
+                                    <button onclick="renameItem('${newPath}', '${folder}')" style="padding: 4px 8px; font-size: 0.7rem; border-color: #ffb800; color: #ffb800;">Rename</button>
+                                    <button onclick="deleteItem('${newPath}')" style="padding: 4px 8px; font-size: 0.7rem; border-color: var(--neon-pink); color: var(--neon-pink);">Delete</button>
+                                `;
+                            }
+                            
+                            folderItem.appendChild(label);
+                            folderItem.appendChild(actions);
+                            mediaListDiv.appendChild(folderItem);
+                        });
+
+                        data.files.forEach(file => {
+                            const fileItem = document.createElement('div');
+                            fileItem.style = "display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 6px; border: 1px solid var(--glass-border); margin-bottom: 5px;";
+                            
+                            const fullFilePath = currentVaultPath ? `${currentVaultPath}/${file}` : file;
+                            
+                            let icon = "📄";
+                            if (file.match(/\.(mp4|mkv|avi|mov)$/i)) icon = "🎬";
+                            else if (file.match(/\.(mp3|wav|flac)$/i)) icon = "🎵";
+                            else if (file.match(/\.(jpg|jpeg|png|gif|svg)$/i)) icon = "🖼️";
+                            
+                            const fileLabel = document.createElement('div');
+                            fileLabel.innerHTML = `<span style='margin-right: 10px; font-size: 1.2rem;'>${icon}</span><span style='color: var(--neon-cyan);'>${file}</span>`;
+                            
+                            const actionGroup = document.createElement('div');
+                            actionGroup.style = "display: flex; gap: 5px;";
+                            actionGroup.innerHTML = `
+                                <a href="/api/media/download/${encodeURIComponent(fullFilePath)}?pin=${pin}" target="_blank" style="text-decoration: none;">
+                                    <button style="padding: 4px 8px; font-size: 0.7rem;">Access</button>
+                                </a>
+                                <button onclick="renameItem('${fullFilePath}', '${file}')" style="padding: 4px 8px; font-size: 0.7rem; border-color: #ffb800; color: #ffb800;">Rename</button>
+                                <button onclick="deleteItem('${fullFilePath}')" style="padding: 4px 8px; font-size: 0.7rem; border-color: var(--neon-pink); color: var(--neon-pink);">Delete</button>
+                            `;
+                            
+                            fileItem.appendChild(fileLabel);
+                            fileItem.appendChild(actionGroup);
+                            mediaListDiv.appendChild(fileItem);
+                        });
+                    } else {
+                        const emptyMsg = document.createElement('div');
+                        emptyMsg.style = "color: #888; padding: 10px;";
+                        emptyMsg.innerText = "This folder is empty.";
+                        mediaListDiv.appendChild(emptyMsg);
+                    }
+                }
+            } catch (error) {
+                mediaListDiv.innerHTML = '<div style="color: var(--neon-pink);">[!] Failed to connect to Media Vault.</div>';
+            }
+        }
+        
+        async function uploadFile(file) {
+            if (!pin || !file) return;
+
+            const mediaListDiv = document.getElementById('media-list');
+            const originalContent = mediaListDiv.innerHTML;
+            mediaListDiv.innerHTML = `<div style="color: #00ffaa; padding: 10px;">[System] Transferring ${file.name} to vault...</div>`;
+
+            const formData = new FormData();
+            formData.append("pin", pin);
+            formData.append("subpath", currentVaultPath);
+            formData.append("file", file);
+
+            try {
+                const response = await fetch('/api/media/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    fetchMediaList(currentVaultPath);
+                } else {
+                    mediaListDiv.innerHTML = originalContent + '<div style="color: var(--neon-pink); padding: 10px;">[!] Upload rejected by node.</div>';
+                }
+            } catch (error) {
+                mediaListDiv.innerHTML = originalContent + '<div style="color: var(--neon-pink); padding: 10px;">[!] Connection severed during transfer.</div>';
+            }
+        }
+
+        // Setup Drag & Drop Listeners
+        const vaultPanel = document.getElementById('vault-panel');
+        if (vaultPanel) {
+            ['dragenter', 'dragover'].forEach(eventName => {
+                vaultPanel.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    vaultPanel.classList.add('drag-over');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                vaultPanel.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    vaultPanel.classList.remove('drag-over');
+                }, false);
+            });
+
+            vaultPanel.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files && files.length > 0) {
+                    uploadFile(files[0]);
+                }
+            }, false);
+        }
+
+        async function createFolderPrompt() {
+            const folderName = prompt("Enter new folder name:");
+            if (!folderName) return;
+            const formData = new FormData();
+            formData.append("pin", pin);
+            formData.append("subpath", currentVaultPath);
+            formData.append("folder_name", folderName.trim());
+            await fetch('/api/media/mkdir', { method: 'POST', body: formData });
+            fetchMediaList(currentVaultPath);
+        }
+
+        async function deleteItem(targetPath) {
+            if (!confirm(`Are you sure you want to delete "${targetPath}"?`)) return;
+            const formData = new FormData();
+            formData.append("pin", pin);
+            formData.append("target_path", targetPath);
+            await fetch('/api/media/delete', { method: 'POST', body: formData });
+            fetchMediaList(currentVaultPath);
+        }
+
+        async function renameItem(oldPath, currentName) {
+            const newName = prompt("Enter new name:", currentName);
+            if (!newName || newName === currentName) return;
+            const formData = new FormData();
+            formData.append("pin", pin);
+            formData.append("old_path", oldPath);
+            formData.append("new_name", newName.trim());
+            await fetch('/api/media/rename', { method: 'POST', body: formData });
+            fetchMediaList(currentVaultPath);
+        }
+
+        // Admin Actions
+        async function shutdownServer() {
+            if (!pin) return;
+            if (!confirm("WARNING: Remote shutdown will terminate the SlabOS engine. Continue?")) return;
+            
+            const consoleDiv = document.getElementById('admin-console');
+            consoleDiv.innerHTML = '<span style="color: var(--neon-pink);">Initiating shutdown sequence...</span>';
+            
+            try {
+                const response = await fetch(`/api/system/shutdown?pin=${pin}`, { method: 'POST' });
+                if (response.ok) {
+                    consoleDiv.innerHTML = '<span style="color: red; font-weight: bold;">[!] NODE OFFLINE. Server terminated.</span>';
+                    fetchVitals = async function() {}; 
+                } else {
+                    consoleDiv.innerHTML = '<span style="color: var(--neon-pink);">[!] Unauthorized to execute shutdown.</span>';
+                }
+            } catch (error) {
+                consoleDiv.innerHTML = '<span style="color: red; font-weight: bold;">[!] Connection severed. Node is offline.</span>';
+            }
+        }
+
+        async function generateGuest() {
+            if (!pin) return;
+            const consoleDiv = document.getElementById('admin-console');
+            consoleDiv.innerHTML = '<span style="color: #ffb800;">Generating Secure Guest QR Code...</span>';
+            
+            try {
+                const response = await fetch(`/api/system/guest?pin=${pin}`, { method: 'POST' });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.status === "success" && data.qr_svg) {
+                        consoleDiv.innerHTML = `
+                            <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 10px; text-align: center;">
+                                <span style="color: var(--neon-cyan); font-weight: bold;">[GUEST PASS ACTIVE] Scan to Connect:</span>
+                                <div class="qr-box">
+                                    ${data.qr_svg}
+                                </div>
+                                <div style="font-size: 0.85rem; color: #ccc;">
+                                    URL: <a href="${data.guest_url}" target="_blank" style="color: var(--neon-cyan);">${data.guest_url}</a><br>
+                                    PIN: <strong style="color: #fff; background: #222; padding: 2px 6px; border-radius: 4px;">${data.guest_pin}</strong>
+                                </div>
+                            </div>`;
+                    } else {
+                        consoleDiv.innerHTML = `<span style="color: var(--neon-pink);">[!] Error: ${data.message || "Failed to generate pass."}</span>`;
+                    }
+                } else {
+                    consoleDiv.innerHTML = '<span style="color: var(--neon-pink);">[!] Unauthorized to generate guest pass.</span>';
+                }
+            } catch (error) {
+                consoleDiv.innerHTML = '<span style="color: red;">[!] Connection error.</span>';
+            }
+        }
+
+        fetchMediaList();
+    </script>
+</body>
+</html>
