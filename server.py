@@ -23,7 +23,9 @@ from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 
-from project import get_system_vitals, verify_api_pin, generate_auth_pin
+from project import get_system_vitals
+from slabos.auth.service import AuthService
+from slabos.config.manager import ConfigManager
 
 # =============================================================================
 # CORE UTILITIES & PATH RESOLUTION
@@ -41,24 +43,13 @@ class ChatPayload(BaseModel):
     images: Optional[List[str]] = Field(default=[], description="Base64 encoded images for vision models")
 
 
-def check_access(provided_pin: str) -> tuple[bool, bool]:
-    """Returns a tuple of (is_authorized, is_admin)."""
-    if not provided_pin:
-        return False, False
-        
-    if verify_api_pin(provided_pin, app.state.session_pin):
-        return True, True
-        
-    try:
-        with open("slabos_config.json", "r") as f:
-            config_data = json.load(f)
-            if provided_pin in config_data.get("guest_pins", {}):
-                return True, False
-    except Exception:
-        pass
-        
-    return False, False
+config_manager = ConfigManager()
+auth_service = AuthService(config_manager)
 
+
+def check_access(provided_pin: str) -> tuple[bool, bool]:
+    """Return the authorization result for an API PIN."""
+    return auth_service.authenticate(provided_pin, app.state.session_pin)
 
 def get_usb_drives() -> dict:
     """Scans the host OS for attached external/USB drives."""
@@ -202,32 +193,23 @@ async def create_guest_pin(request: Request, pin: str):
     is_auth, is_admin = check_access(pin)
     if not is_admin:
         raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    new_guest = generate_auth_pin(4)
-    config_file = "slabos_config.json"
-    
+
     try:
-        with open(config_file, "r") as f:
-            config_data = json.load(f)
-            
-        config_data.setdefault("guest_pins", {})[new_guest] = "active"
-        
-        with open(config_file, "w") as f:
-            json.dump(config_data, f, indent=4)
-            
+        new_guest = auth_service.create_guest_pin()
+
         base_url = str(request.base_url).rstrip("/")
         guest_url = f"{base_url}/?pin={new_guest}"
 
         # Generate SVG QR Code (Zero external library dependencies)
-        factory = qrcode.image.svg.SvgPathImage  # <-- Changed to SvgPathImage
+        factory = qrcode.image.svg.SvgPathImage
         img = qrcode.make(guest_url, image_factory=factory)
         stream = io.BytesIO()
         img.save(stream)
-        svg_qr = stream.getvalue().decode('utf-8')
-            
+        svg_qr = stream.getvalue().decode("utf-8")
+
         return {
-            "status": "success", 
-            "guest_pin": new_guest, 
+            "status": "success",
+            "guest_pin": new_guest,
             "guest_url": guest_url,
             "qr_svg": svg_qr
         }

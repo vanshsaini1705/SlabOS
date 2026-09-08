@@ -63,3 +63,44 @@ def test_generate_auth_pin_behavior():
     fallback_pin = generate_auth_pin(0)
     assert len(fallback_pin) == 4
     assert fallback_pin.isdigit()
+
+
+def test_auth_service_master_and_guest(tmp_path):
+    from slabos.auth.service import AuthService
+    from slabos.config.manager import ConfigManager
+
+    manager = ConfigManager()
+    manager.CONFIG_FILE = tmp_path / "slabos_config.json"
+    manager.save({
+        "master_pin": "1234",
+        "default_media_dir": "./media",
+        "guest_pins": {"5678": "active"},
+    })
+
+    auth = AuthService(manager)
+
+    assert auth.authenticate("1234", "1234") == (True, True)
+    assert auth.authenticate("5678", "1234") == (True, False)
+    assert auth.authenticate("9999", "1234") == (False, False)
+
+
+def test_auth_service_create_guest_pin(tmp_path):
+    from slabos.auth.service import AuthService
+    from slabos.config.manager import ConfigManager
+
+    manager = ConfigManager()
+    manager.CONFIG_FILE = tmp_path / "slabos_config.json"
+    manager.save({
+        "master_pin": "1234",
+        "default_media_dir": "./media",
+        "guest_pins": {},
+    })
+
+    auth = AuthService(manager)
+    guest_pin = auth.create_guest_pin()
+
+    assert len(guest_pin) == 4
+    assert guest_pin.isdigit()
+
+    config = manager.load_or_create()
+    assert config["guest_pins"][guest_pin] == "active"

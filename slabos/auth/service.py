@@ -49,3 +49,37 @@ def verify_token_access(token: str, active_tokens: dict) -> bool:
         return token in active_tokens
     except ValueError:
         return False
+
+
+class AuthService:
+    """Coordinates SlabOS master and guest authentication."""
+
+    def __init__(self, config_manager):
+        self.config_manager = config_manager
+
+    def authenticate(self, provided_pin: str, session_pin: str) -> tuple[bool, bool]:
+        """Return (is_authorized, is_admin)."""
+        if not provided_pin:
+            return False, False
+
+        if verify_api_pin(provided_pin, session_pin):
+            return True, True
+
+        config = self.config_manager.load_or_create()
+        guest_pins = config.get("guest_pins", {})
+
+        if provided_pin in guest_pins:
+            return True, False
+
+        return False, False
+
+    def create_guest_pin(self) -> str:
+        """Create and persist a new guest PIN."""
+        config = self.config_manager.load_or_create()
+        guest_pins = config.setdefault("guest_pins", {})
+
+        new_guest = generate_auth_pin(4)
+        guest_pins[new_guest] = "active"
+
+        self.config_manager.save(config)
+        return new_guest

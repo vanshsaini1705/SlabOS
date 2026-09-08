@@ -9,6 +9,11 @@ class ConfigManager:
 
     CONFIG_FILE = Path("slabos_config.json")
 
+    def save(self, config: dict) -> None:
+        """Persist SlabOS configuration."""
+        with self.CONFIG_FILE.open("w") as f:
+            json.dump(config, f, indent=4)
+
     def load_or_create(self) -> dict:
         if self.CONFIG_FILE.exists():
             try:
