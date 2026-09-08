@@ -40,24 +40,9 @@ console = Console()
 # =============================================================================
 
 def recommend_ai_model(ram_gb: float, has_gpu: bool, disk_free_gb: float = 50.0) -> str:
-    """Determines optimal AI model, enforcing a 5GB OS storage safety buffer."""
-    SAFETY_BUFFER_GB = 5.0
-    if disk_free_gb < (2.0 + SAFETY_BUFFER_GB):
-        return "" 
-    if ram_gb < 6.0:
-        return "qwen2.5:1.5b" if has_gpu else "llama3.2:1b"
-    elif ram_gb < 12.0:
-        if disk_free_gb >= (5.0 + SAFETY_BUFFER_GB):
-            return "qwen2.5:7b" if has_gpu else "gemma2:2b"
-        return "qwen2.5:1.5b" if has_gpu else "llama3.2:1b"
-    elif ram_gb < 16.0:
-        if disk_free_gb >= (5.0 + SAFETY_BUFFER_GB):
-            return "deepseek-r1:7b" if has_gpu else "llama3.2:3b"
-        return "gemma2:2b"
-    else:
-        if disk_free_gb >= (5.0 + SAFETY_BUFFER_GB):
-            return "deepseek-r1:7b" if has_gpu else "llama3:8b"
-        return "llama3.2:3b"
+    """Compatibility wrapper for the v0.2 AI subsystem."""
+    from slabos.ai.model_manager import ModelManager
+    return ModelManager().recommend_ai_model(ram_gb, has_gpu, disk_free_gb)
 
 def calculate_zram_size(total_ram_gb: float, max_ratio: float = 0.5) -> float:
     """Calculates compressed ZRAM swap size allocation in Gigabytes."""
@@ -144,18 +129,14 @@ def get_system_vitals() -> dict:
     return HardwareDetector().get_system_vitals()
 
 def get_installed_models() -> list:
-    """Queries the local Ollama instance for installed models."""
-    try:
-        result = subprocess.run(["ollama", "list"], capture_output=True, text=True, check=True)
-        lines = result.stdout.strip().split('\n')[1:] 
-        return [line.split()[0] for line in lines if line]
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return []
+    """Compatibility wrapper for the v0.2 AI subsystem."""
+    from slabos.ai.model_manager import ModelManager
+    return ModelManager().get_installed_models()
 
 def check_vision_capabilities(models: list) -> bool:
-    """Checks if installed models support multimodal vision processing."""
-    vision_keywords = ["llava", "qwen2-vl", "moondream", "vision"]
-    return any(any(kw in model.lower() for kw in vision_keywords) for model in models)
+    """Compatibility wrapper for the v0.2 AI subsystem."""
+    from slabos.ai.model_manager import ModelManager
+    return ModelManager().check_vision_capabilities(models)
 
 # =============================================================================
 # SECTION 3: NETWORKING & ASCII GENERATION
@@ -249,17 +230,9 @@ def run_interactive_wizard() -> dict:
     return {"mode": clean_mode, "hostname": hostname.strip(), "media_dir": media_dir.strip()}
 
 def setup_ollama_model(model_name: str) -> bool:
-    """Automates downloading and verifying AI models."""
-    if not shutil.which("ollama"):
-        print("\n[!] CRITICAL: Ollama binary not found. Install from https://ollama.com/")
-        return False
-    print(f"\n[System] Verifying/Downloading model: {model_name}...")
-    try:
-        subprocess.run(["ollama", "pull", model_name], check=True)
-        print(f"[bold green]✔ Node '{model_name}' is primed![/bold green]")
-        return True
-    except subprocess.CalledProcessError:
-        return False
+    """Compatibility wrapper for the v0.2 AI subsystem."""
+    from slabos.ai.model_manager import ModelManager
+    return ModelManager().setup_ollama_model(model_name)
 
 def select_ai_model(recommended_model: str, current_mode: str) -> str:
     """Prompts the user to select an AI model."""
