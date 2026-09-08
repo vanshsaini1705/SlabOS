@@ -140,23 +140,9 @@ def verify_token_access(token: str, active_tokens: dict) -> bool:
         return False
 
 def load_or_create_config() -> dict:
-    """Loads existing configuration or creates a new one (Persistence Layer)."""
-    config_file = "slabos_config.json"
-    if os.path.exists(config_file):
-        try:
-            with open(config_file, "r") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[!] Config read error ({e}). Rebuilding.")
-            
-    new_config = {
-        "master_pin": generate_auth_pin(4),
-        "default_media_dir": "./media",
-        "guest_pins": {}
-    }
-    with open(config_file, "w") as f:
-        json.dump(new_config, f, indent=4)
-    return new_config
+    """Compatibility wrapper for the v0.2 configuration subsystem."""
+    from slabos.config.manager import ConfigManager
+    return ConfigManager().load_or_create()
 
 # =============================================================================
 # SECTION 2: HARDWARE & CAPABILITY TELEMETRY
