@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from project import (
     recommend_ai_model,
     calculate_zram_size,
@@ -104,3 +106,90 @@ def test_auth_service_create_guest_pin(tmp_path):
 
     config = manager.load_or_create()
     assert config["guest_pins"][guest_pin] == "active"
+
+
+def test_storage_paths_stay_inside_media_root(tmp_path):
+    from slabos.storage.paths import StoragePaths
+
+    storage = StoragePaths(str(tmp_path))
+
+    target, base = storage.resolve("folder/file.txt")
+    assert Path(target) == (tmp_path / "folder/file.txt").resolve()
+    assert Path(base) == tmp_path.resolve()
+
+
+def test_storage_paths_reject_escape(tmp_path):
+    from slabos.storage.paths import StoragePaths
+    import pytest
+
+    storage = StoragePaths(str(tmp_path))
+
+    with pytest.raises(PermissionError):
+        storage.resolve("../outside.txt")
+
+
+def test_storage_paths_reject_absolute_escape(tmp_path):
+    from slabos.storage.paths import StoragePaths
+    import pytest
+
+    storage = StoragePaths(str(tmp_path))
+
+    with pytest.raises(PermissionError):
+        storage.resolve("/tmp/outside.txt")
+
+
+def test_storage_paths_allow_nested_paths(tmp_path):
+    from slabos.storage.paths import StoragePaths
+
+    storage = StoragePaths(str(tmp_path))
+
+    target, base = storage.resolve("a/b/c.txt")
+    assert Path(target) == (tmp_path / "a/b/c.txt").resolve()
+    assert Path(base) == tmp_path.resolve()
+
+
+def test_storage_service_file_operations(tmp_path):
+    from slabos.storage.paths import StoragePaths
+    from slabos.storage.service import StorageService
+
+    service = StorageService(StoragePaths(str(tmp_path)))
+
+    (tmp_path / "old.txt").write_text("hello")
+
+    folders, files = service.list_directory("")
+    assert folders == []
+    assert files == ["old.txt"]
+
+    service.create_folder("", "docs")
+    assert (tmp_path / "docs").is_dir()
+
+    service.rename("old.txt", "new.txt")
+    assert not (tmp_path / "old.txt").exists()
+    assert (tmp_path / "new.txt").read_text() == "hello"
+
+    assert service.get_file("new.txt") == str((tmp_path / "new.txt").resolve())
+
+    service.delete("new.txt")
+    assert not (tmp_path / "new.txt").exists()
+
+    service.delete("docs")
+    assert not (tmp_path / "docs").exists()
+
+
+def test_storage_service_rejects_unsafe_names(tmp_path):
+    import pytest
+    from slabos.storage.paths import StoragePaths
+    from slabos.storage.service import StorageService
+
+    service = StorageService(StoragePaths(str(tmp_path)))
+
+    with pytest.raises(PermissionError):
+        service.create_folder("", "../escape")
+
+    (tmp_path / "safe.txt").write_text("hello")
+
+    with pytest.raises(PermissionError):
+        service.rename("safe.txt", "../escape.txt")
+
+    with pytest.raises(PermissionError):
+        service.get_file("../outside.txt")

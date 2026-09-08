@@ -9,11 +9,9 @@ import signal
 import threading
 import time
 import json
-import shutil
 import io
 import httpx
 import uvicorn
-import psutil
 import qrcode
 import qrcode.image.svg
 from typing import AsyncGenerator, List, Optional
@@ -26,6 +24,8 @@ from pydantic import BaseModel, Field
 from project import get_system_vitals
 from slabos.auth.service import AuthService
 from slabos.config.manager import ConfigManager
+from slabos.storage.paths import StoragePaths, get_usb_drives as storage_get_usb_drives
+from slabos.storage.service import StorageService
 
 # =============================================================================
 # CORE UTILITIES & PATH RESOLUTION
@@ -52,32 +52,19 @@ def check_access(provided_pin: str) -> tuple[bool, bool]:
     return auth_service.authenticate(provided_pin, app.state.session_pin)
 
 def get_usb_drives() -> dict:
-    """Scans the host OS for attached external/USB drives."""
-    usbs = {}
-    try:
-        for part in psutil.disk_partitions(all=False):
-            if os.name == 'nt' and part.device != 'C:\\':
-                usbs[f"USB_Drive_{part.device[0]}"] = part.mountpoint
-            elif os.name != 'nt' and ('/media/' in part.mountpoint or '/mnt/' in part.mountpoint or '/Volumes/' in part.mountpoint):
-                usbs[f"USB_{os.path.basename(part.mountpoint)}"] = part.mountpoint
-    except Exception:
-        pass
-    return usbs
+    """Compatibility wrapper for the storage path subsystem."""
+    return storage_get_usb_drives()
+
+
+def get_storage_service() -> StorageService:
+    """Return a storage service for the current SlabOS media root."""
+    media_dir = getattr(app.state, "media_dir", "./media")
+    return StorageService(StoragePaths(media_dir))
 
 
 def resolve_vault_path(subpath: str) -> tuple[str, str]:
-    """Dynamically routes paths to local Vault or physical USB drives."""
-    usbs = get_usb_drives()
-    
-    for usb_name, usb_path in usbs.items():
-        if subpath == usb_name or subpath.startswith(usb_name + "/"):
-            relative = subpath[len(usb_name):].lstrip("/")
-            target = os.path.abspath(os.path.join(usb_path, relative))
-            return target, usb_path
-            
-    media_dir = os.path.abspath(app.state.media_dir)
-    target = os.path.abspath(os.path.join(media_dir, subpath))
-    return target, media_dir
+    """Compatibility wrapper for storage path resolution."""
+    return get_storage_service().paths.resolve(subpath)
 
 
 # =============================================================================
@@ -225,34 +212,23 @@ async def list_media_files(pin: str, subpath: str = ""):
     is_auth, _ = check_access(pin)
     if not is_auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
-    target_dir, base_dir = resolve_vault_path(subpath)
-    
-    if not target_dir.startswith(base_dir) or not os.path.isdir(target_dir):
-        raise HTTPException(status_code=403, detail="Forbidden Path")
-        
+
     try:
-        items = os.listdir(target_dir)
-        folders, files = [], []
+        folders, files = get_storage_service().list_directory(subpath)
         usbs = get_usb_drives()
-        
-        for item in items:
-            item_path = os.path.join(target_dir, item)
-            if os.path.isdir(item_path):
-                if subpath == "" and item in usbs.keys():
-                    continue
-                folders.append(item)
-            elif os.path.isfile(item_path):
-                files.append(item)
-        
-        folders.sort()
-        files.sort()
-        
+
         if subpath == "":
             for usb_name in usbs.keys():
                 folders.insert(0, usb_name)
-        
-        return {"status": "success", "current_path": subpath, "folders": folders, "files": files}
+
+        return {
+            "status": "success",
+            "current_path": subpath,
+            "folders": folders,
+            "files": files,
+        }
+    except PermissionError:
+        raise HTTPException(status_code=403, detail="Forbidden Path")
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -262,11 +238,12 @@ async def download_media(filepath: str, pin: str):
     is_auth, _ = check_access(pin)
     if not is_auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
-    target_path, base_dir = resolve_vault_path(filepath)
-    if not target_path.startswith(base_dir) or not os.path.isfile(target_path):
+
+    try:
+        target_path = get_storage_service().get_file(filepath)
+    except PermissionError:
         raise HTTPException(status_code=403, detail="Forbidden Path")
-        
+
     return FileResponse(target_path)
 
 
@@ -296,14 +273,12 @@ async def create_folder(pin: str = Form(...), subpath: str = Form(""), folder_na
     is_auth, _ = check_access(pin)
     if not is_auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
-    target_dir, base_dir = resolve_vault_path(subpath)
-    new_dir = os.path.abspath(os.path.join(target_dir, folder_name))
-    
-    if not new_dir.startswith(base_dir):
+
+    try:
+        get_storage_service().create_folder(subpath, folder_name)
+    except PermissionError:
         raise HTTPException(status_code=403, detail="Forbidden Path")
-        
-    os.makedirs(new_dir, exist_ok=True)
+
     return {"status": "success"}
 
 
@@ -312,16 +287,12 @@ async def delete_item(pin: str = Form(...), target_path: str = Form(...)):
     is_auth, _ = check_access(pin)
     if not is_auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    full_path, base_dir = resolve_vault_path(target_path)
-    if not full_path.startswith(base_dir) or full_path == base_dir:
+
+    try:
+        get_storage_service().delete(target_path)
+    except PermissionError:
         raise HTTPException(status_code=403, detail="Forbidden Path")
-        
-    if os.path.isdir(full_path):
-        shutil.rmtree(full_path)
-    elif os.path.isfile(full_path):
-        os.remove(full_path)
-        
+
     return {"status": "success"}
 
 
@@ -330,15 +301,12 @@ async def rename_item(pin: str = Form(...), old_path: str = Form(...), new_name:
     is_auth, _ = check_access(pin)
     if not is_auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
-        
-    source_path, base_dir = resolve_vault_path(old_path)
-    parent_dir = os.path.dirname(source_path)
-    dest_path = os.path.abspath(os.path.join(parent_dir, new_name))
-    
-    if not dest_path.startswith(base_dir):
+
+    try:
+        get_storage_service().rename(old_path, new_name)
+    except PermissionError:
         raise HTTPException(status_code=403, detail="Forbidden Path")
-        
-    os.rename(source_path, dest_path)
+
     return {"status": "success"}
 
 
