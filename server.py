@@ -125,30 +125,13 @@ async def check_vision_support(pin: str):
     return {"is_vision": is_vision, "model": active_model}
 
 
-async def stream_ollama_generator(prompt: str, model_name: str, images: List[str] = []) -> AsyncGenerator[str, None]:
-    ollama_url = "http://localhost:11434/api/generate"
-    payload = {
-        "model": model_name,
-        "prompt": prompt,
-        "stream": True
-    }
-    
-    if images and len(images) > 0:
-        payload["images"] = images
+async def stream_ollama_generator(prompt: str, model_name: str, images: List[str] = None) -> AsyncGenerator[str, None]:
+    """Compatibility wrapper for the v0.2 Ollama AI client."""
+    from slabos.ai.client import OllamaClient
+    async for event in OllamaClient().stream(prompt, model_name, images or []):
+        yield event
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        try:
-            async with client.stream("POST", ollama_url, json=payload) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if line:
-                        data = json.loads(line)
-                        token = data.get("response", "")
-                        yield f"data: {json.dumps({'text': token})}\n\n"
-                        if data.get("done"):
-                            break
-        except httpx.HTTPError as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
 
 
 @app.post("/api/chat")
@@ -157,8 +140,12 @@ async def api_chat_stream(payload: ChatPayload, pin: str):
     if not is_auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
         
+    active_model = getattr(app.state, "active_model", "Disabled")
+    if active_model == "Disabled":
+        raise HTTPException(status_code=503, detail="AI is disabled")
+
     return StreamingResponse(
-        stream_ollama_generator(payload.prompt, payload.model, payload.images or []),
+        stream_ollama_generator(payload.prompt, active_model, payload.images or []),
         media_type="text/event-stream"
     )
 
