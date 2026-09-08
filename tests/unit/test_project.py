@@ -45,5 +45,21 @@ def test_generate_auth_pin():
 
 def test_verify_api_pin():
     assert verify_api_pin("1234", "1234") is True
+    assert verify_api_pin(" 1234 ", "1234") is True
     assert verify_api_pin("1234", "9999") is False
     assert verify_api_pin("", "1234") is False
+    assert verify_api_pin(None, "1234") is False
+
+
+def test_generate_auth_pin_behavior():
+    pin = generate_auth_pin()
+    assert len(pin) == 4
+    assert pin.isdigit()
+
+    pin = generate_auth_pin(6)
+    assert len(pin) == 6
+    assert pin.isdigit()
+
+    fallback_pin = generate_auth_pin(0)
+    assert len(fallback_pin) == 4
+    assert fallback_pin.isdigit()

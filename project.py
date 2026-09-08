@@ -105,39 +105,24 @@ def sanitize_mdns_hostname(raw_name: str) -> str:
     return clean if clean else "slabos"
 
 def generate_auth_pin(length: int = 4) -> str:
-    """Generates a cryptographically secure numeric PIN."""
-    if not isinstance(length, int) or length <= 0:
-        length = 4 
-    return "".join(secrets.choice(string.digits) for _ in range(length))
+    """Compatibility wrapper for the v0.2 authentication subsystem."""
+    from slabos.auth.service import generate_auth_pin as _generate_auth_pin
+    return _generate_auth_pin(length)
 
 def verify_api_pin(provided_pin: str, expected_pin: str) -> bool:
-    """Validates user authentication PINs for API route access."""
-    if not isinstance(provided_pin, str) or not isinstance(expected_pin, str):
-        return False
-    return secrets.compare_digest(provided_pin.strip(), expected_pin.strip())
+    """Compatibility wrapper for PIN verification."""
+    from slabos.auth.service import verify_api_pin as _verify_api_pin
+    return _verify_api_pin(provided_pin, expected_pin)
 
 def create_share_token(filepath: str, secret_key: str, expiry_seconds: int = 86400) -> str:
-    """Generates a hashed, temporary access token for file sharing."""
-    if not isinstance(filepath, str) or not isinstance(secret_key, str):
-        return "ERROR:INVALID_INPUT"
-    if not isinstance(expiry_seconds, int) or expiry_seconds <= 0:
-        expiry_seconds = 86400 
-    expiry = int(time.time()) + expiry_seconds
-    raw_payload = f"{filepath}:{secret_key}:{expiry}"
-    token_hash = hashlib.sha256(raw_payload.encode('utf-8')).hexdigest()[:16]
-    return f"{expiry}:{token_hash}"
+    """Compatibility wrapper for share-token generation."""
+    from slabos.auth.service import create_share_token as _create_share_token
+    return _create_share_token(filepath, secret_key, expiry_seconds)
 
 def verify_token_access(token: str, active_tokens: dict) -> bool:
-    """Validates whether a file share token is valid and active."""
-    if not isinstance(token, str) or not isinstance(active_tokens, dict):
-        return False
-    try:
-        expiry_str, token_hash = token.split(":")
-        if int(time.time()) > int(expiry_str):
-            return False
-        return token in active_tokens
-    except ValueError:
-        return False
+    """Compatibility wrapper for share-token verification."""
+    from slabos.auth.service import verify_token_access as _verify_token_access
+    return _verify_token_access(token, active_tokens)
 
 def load_or_create_config() -> dict:
     """Compatibility wrapper for the v0.2 configuration subsystem."""
