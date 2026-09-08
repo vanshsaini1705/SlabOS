@@ -157,42 +157,6 @@ def check_vision_capabilities(models: list) -> bool:
     vision_keywords = ["llava", "qwen2-vl", "moondream", "vision"]
     return any(any(kw in model.lower() for kw in vision_keywords) for model in models)
 
-def get_system_vitals() -> dict:
-    """Fetches live host hardware metrics optimally."""
-    BYTES_IN_GB = 1024 ** 3
-    cpu_pct = psutil.cpu_percent(interval=None)
-    ram = psutil.virtual_memory()
-    
-    temp = -1.0
-    if hasattr(psutil, "sensors_temperatures"):
-        try:
-            temps = psutil.sensors_temperatures()
-            for key in ["coretemp", "cpu_thermal", "k10temp", "zenpower", "cpu-thermal"]:
-                if key in temps and temps[key]:
-                    temp = round(temps[key][0].current, 1)
-                    break
-        except Exception:
-            pass
-
-    disk_pct = disk_total_gb = disk_free_gb = 0.0
-    try:
-        disk = psutil.disk_usage("/")
-        disk_pct = round(disk.percent, 1)
-        disk_total_gb = round(disk.total / BYTES_IN_GB, 2)
-        disk_free_gb = round(disk.free / BYTES_IN_GB, 2)
-    except Exception:
-        pass
-
-    return {
-        "cpu_pct": round(cpu_pct, 1),
-        "ram_pct": round(ram.percent, 1),
-        "ram_total_gb": round(ram.total / BYTES_IN_GB, 2),
-        "cpu_temp": temp,
-        "disk_pct": disk_pct,
-        "disk_total_gb": disk_total_gb,
-        "disk_free_gb": disk_free_gb,
-    }
-
 # =============================================================================
 # SECTION 3: NETWORKING & ASCII GENERATION
 # =============================================================================
