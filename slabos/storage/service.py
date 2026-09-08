@@ -1,3 +1,5 @@
+import os
+import tempfile
 from pathlib import Path
 
 from .paths import StoragePaths
@@ -83,3 +85,94 @@ class StorageService:
 
         source_path.rename(destination)
         return str(destination)
+
+
+class UploadTooLargeError(Exception):
+    """Raised when an upload exceeds the configured size limit."""
+
+
+class UploadValidationError(Exception):
+    """Raised when an uploaded filename or destination is invalid."""
+
+
+class StorageUploadService:
+    """Handle bounded, atomic file uploads inside a storage root."""
+
+    def __init__(self, paths: StoragePaths, max_size_bytes: int = 100 * 1024 * 1024):
+        self.paths = paths
+        self.max_size_bytes = max_size_bytes
+
+    def validate_filename(self, filename: str) -> str:
+        """Validate and normalize a client-provided filename."""
+        if not isinstance(filename, str):
+            raise UploadValidationError("Invalid filename")
+
+        filename = filename.strip()
+
+        if not filename:
+            raise UploadValidationError("Invalid filename")
+
+        name = Path(filename).name
+
+        if name != filename or name in {".", ".."}:
+            raise UploadValidationError("Invalid filename")
+
+        return name
+
+    def get_destination(self, subpath: str, filename: str) -> Path:
+        """Return a safe destination path inside the selected storage root."""
+        safe_name = self.validate_filename(filename)
+
+        try:
+            target_dir, base = self.paths.resolve(subpath)
+        except PermissionError as exc:
+            raise UploadValidationError("Invalid destination") from exc
+
+        target_dir_path = Path(target_dir)
+        base_path = Path(base).resolve()
+
+        if not target_dir_path.is_dir():
+            raise UploadValidationError("Invalid destination")
+
+        destination = (target_dir_path / safe_name).resolve()
+
+        if not destination.is_relative_to(base_path):
+            raise UploadValidationError("Invalid destination")
+
+        return destination
+
+    async def save_upload(self, file, subpath: str, filename: str) -> Path:
+        """Stream an upload to a temporary file and atomically finalize it."""
+        destination = self.get_destination(subpath, filename)
+        temp_path = None
+        total_size = 0
+
+        fd, temp_path = tempfile.mkstemp(
+            prefix=f".{destination.name}.",
+            suffix=".upload",
+            dir=str(destination.parent),
+        )
+
+        try:
+            with os.fdopen(fd, "wb") as buffer:
+                while chunk := await file.read(1024 * 1024):
+                    total_size += len(chunk)
+
+                    if total_size > self.max_size_bytes:
+                        raise UploadTooLargeError("Upload exceeds the maximum size")
+
+                    buffer.write(chunk)
+
+                buffer.flush()
+                os.fsync(buffer.fileno())
+
+            os.replace(temp_path, destination)
+            temp_path = None
+            return destination
+
+        finally:
+            if temp_path is not None:
+                try:
+                    Path(temp_path).unlink()
+                except FileNotFoundError:
+                    pass

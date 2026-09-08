@@ -25,7 +25,12 @@ from project import get_system_vitals
 from slabos.auth.service import AuthService
 from slabos.config.manager import ConfigManager
 from slabos.storage.paths import StoragePaths, get_usb_drives as storage_get_usb_drives
-from slabos.storage.service import StorageService
+from slabos.storage.service import (
+    StorageService,
+    StorageUploadService,
+    UploadTooLargeError,
+    UploadValidationError,
+)
 
 # =============================================================================
 # CORE UTILITIES & PATH RESOLUTION
@@ -252,18 +257,16 @@ async def upload_media(pin: str = Form(...), subpath: str = Form(""), file: Uplo
     is_auth, _ = check_access(pin)
     if not is_auth:
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
-    target_dir, base_dir = resolve_vault_path(subpath)
-    if not target_dir.startswith(base_dir) or not os.path.isdir(target_dir):
-        raise HTTPException(status_code=403, detail="Forbidden Path")
-        
-    file_path = os.path.join(target_dir, file.filename)
-    
+
+    upload_service = StorageUploadService(get_storage_service().paths)
+
     try:
-        with open(file_path, "wb") as buffer:
-            while chunk := await file.read(1024 * 1024):
-                buffer.write(chunk)
+        await upload_service.save_upload(file, subpath, file.filename or "")
         return {"status": "success", "filename": file.filename}
+    except UploadValidationError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except UploadTooLargeError as e:
+        raise HTTPException(status_code=413, detail=str(e))
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 from project import (
@@ -193,3 +194,95 @@ def test_storage_service_rejects_unsafe_names(tmp_path):
 
     with pytest.raises(PermissionError):
         service.get_file("../outside.txt")
+
+
+def test_storage_upload_filename_validation(tmp_path):
+    from slabos.storage.paths import StoragePaths
+    from slabos.storage.service import StorageUploadService, UploadValidationError
+
+    service = StorageUploadService(StoragePaths(str(tmp_path)))
+
+    assert service.validate_filename("photo.jpg") == "photo.jpg"
+
+    with pytest.raises(UploadValidationError):
+        service.validate_filename("")
+
+    with pytest.raises(UploadValidationError):
+        service.validate_filename("../photo.jpg")
+
+    with pytest.raises(UploadValidationError):
+        service.validate_filename("/tmp/photo.jpg")
+
+
+def test_storage_upload_destination_validation(tmp_path):
+    from slabos.storage.paths import StoragePaths
+    from slabos.storage.service import StorageUploadService, UploadValidationError
+
+    service = StorageUploadService(StoragePaths(str(tmp_path)))
+    (tmp_path / "uploads").mkdir()
+
+    destination = service.get_destination("uploads", "photo.jpg")
+    assert destination == (tmp_path / "uploads/photo.jpg").resolve()
+
+    with pytest.raises(UploadValidationError):
+        service.get_destination("../outside", "photo.jpg")
+
+
+def test_storage_upload_writes_file_atomically(tmp_path):
+    from slabos.storage.paths import StoragePaths
+    from slabos.storage.service import StorageUploadService
+
+    class FakeUpload:
+        def __init__(self, chunks):
+            self.chunks = iter(chunks)
+
+        async def read(self, _size):
+            return next(self.chunks, b"")
+
+    service = StorageUploadService(
+        StoragePaths(str(tmp_path)),
+        max_size_bytes=1024,
+    )
+
+    (tmp_path / "uploads").mkdir()
+
+    import asyncio
+
+    result = asyncio.run(service.save_upload(
+        FakeUpload([b"hello ", b"SlabOS"]),
+        "uploads",
+        "test.txt",
+    ))
+
+    assert result == (tmp_path / "uploads/test.txt").resolve()
+    assert result.read_bytes() == b"hello SlabOS"
+    assert not list((tmp_path / "uploads").glob("*.upload"))
+
+
+def test_storage_upload_rejects_oversized_file_and_cleans_temp(tmp_path):
+    from slabos.storage.paths import StoragePaths
+    from slabos.storage.service import StorageUploadService, UploadTooLargeError
+
+    class FakeUpload:
+        def __init__(self, chunks):
+            self.chunks = iter(chunks)
+
+        async def read(self, _size):
+            return next(self.chunks, b"")
+
+    service = StorageUploadService(
+        StoragePaths(str(tmp_path)),
+        max_size_bytes=5,
+    )
+
+    import asyncio
+
+    with pytest.raises(UploadTooLargeError):
+        asyncio.run(service.save_upload(
+            FakeUpload([b"1234", b"56"]),
+            "",
+            "too-big.txt",
+        ))
+
+    assert not (tmp_path / "too-big.txt").exists()
+    assert not list(tmp_path.glob("*.upload"))
