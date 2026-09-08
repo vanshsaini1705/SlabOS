@@ -134,25 +134,14 @@ def load_or_create_config() -> dict:
 # =============================================================================
 
 def detect_capabilities() -> dict:
-    """Probes host OS environment and hardware dynamically."""
-    current_os = platform.system().lower()
-    is_admin = False
-    try:
-        if current_os == "windows":
-            is_admin = ctypes.windll.shell32.IsUserAnAdmin() != 0
-        elif hasattr(os, "geteuid"):
-            is_admin = os.geteuid() == 0
-    except Exception:
-        pass
+    """Compatibility wrapper for the v0.2 hardware subsystem."""
+    from slabos.hardware.detector import HardwareDetector
+    return HardwareDetector().detect_capabilities()
 
-    has_gpu = shutil.which("nvidia-smi") is not None or (current_os == "darwin" and platform.machine() == "arm64")
-
-    return {
-        "os": current_os,
-        "is_root": is_admin,
-        "has_ollama": shutil.which("ollama") is not None,
-        "has_gpu": has_gpu,
-    }
+def get_system_vitals() -> dict:
+    """Compatibility wrapper for the v0.2 hardware subsystem."""
+    from slabos.hardware.detector import HardwareDetector
+    return HardwareDetector().get_system_vitals()
 
 def get_installed_models() -> list:
     """Queries the local Ollama instance for installed models."""
